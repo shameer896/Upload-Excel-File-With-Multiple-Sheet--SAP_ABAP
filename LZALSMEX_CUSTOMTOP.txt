@@ -1,0 +1,15 @@
+FUNCTION-POOL ZALSMEX_CUSTOM.                 " Define the function pool for custom Excel handling
+* INCLUDE LZFGEXCEL_INTD...                  " Include local class definitions for Excel integration
+
+* Define types for handling Excel data
+TYPES: ty_d_itabvalue TYPE zalsmex_tabline_custom-value, " Type for internal table values
+       ty_t_itab      TYPE zalsmex_tabline_custom   OCCURS 0, " Line type for internal table
+       
+       BEGIN OF ty_s_senderline,
+         line(4096) TYPE c, " Single line of text with a maximum length of 4096 characters
+       END OF ty_s_senderline,
+       
+       ty_t_sender TYPE ty_s_senderline  OCCURS 0. " Table type for sender data
+
+* Define constants used in processing
+CONSTANTS: gc_esc VALUE '"'. " Escape character for handling special CSV formatting
