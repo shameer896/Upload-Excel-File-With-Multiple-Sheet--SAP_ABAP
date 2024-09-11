@@ -1,0 +1,155 @@
+*----------------------------------------------------------------------*
+* INCLUDE LZFGEXCEL_INTF01
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form separated_to_intern_convert
+*&---------------------------------------------------------------------*
+*& Purpose: Converts data from the Excel import table to an internal
+*&          SAP table format.
+*& Parameters:
+*&      --> I_TAB       : Input table containing Excel data
+*&      --> I_INTERN    : Internal table where data will be stored
+*&      --> I_SEPARATOR : Field separator used in Excel data
+*&      --> SHEETNO     : Sheet number from which data is extracted
+*&---------------------------------------------------------------------*
+FORM separated_to_intern_convert
+  TABLES   i_tab TYPE ty_t_sender " Input table from Excel
+           i_intern TYPE ty_t_itab " Internal SAP table
+  USING    i_separator TYPE c " Field separator (e.g., comma or semicolon)
+           sheetno. " Sheet number
+
+  DATA: l_sic_tabix LIKE sy-tabix, " Current index in the input table
+        l_sic_col   TYPE kcd_ex_col, " Current column index
+        l_fdpos     LIKE sy-fdpos. " Field position within the line
+
+  REFRESH i_intern. " Clear the internal table
+
+  LOOP AT i_tab. " Loop through each line of the input table
+    l_sic_tabix = sy-tabix.
+    l_sic_col = 0.
+
+    WHILE i_tab CA i_separator. " Process line until separator is found
+      l_fdpos = sy-fdpos.
+      l_sic_col = l_sic_col + 1.
+
+      PERFORM line_to_cell_separat
+        TABLES i_intern
+        USING  i_tab l_sic_tabix l_sic_col
+               i_separator l_fdpos
+               sheetno.
+    ENDWHILE.
+
+    IF i_tab <> space. " Check if there is remaining data
+      CLEAR i_intern.
+      i_intern-row = l_sic_tabix.
+      i_intern-col = l_sic_col + 1.
+      i_intern-value = i_tab.
+      APPEND i_intern. " Append data to internal table
+    ENDIF.
+  ENDLOOP.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form line_to_cell_separat
+*&---------------------------------------------------------------------*
+*& Purpose: Separates a line of text into individual cells based on the
+*&          separator and adds them to the internal table.
+*& Parameters:
+*&      --> I_INTERN    : Internal SAP table where data will be stored
+*&      --> I_LINE      : Line of text from the Excel import
+*&      --> I_ROW       : Row number for the current line
+*&      --> CH_CELL_COL : Column number for the current cell
+*&      --> I_SEPARATOR : Field separator (e.g., comma or semicolon)
+*&      --> I_FDPOS     : Field position within the line
+*&      --> SHEETNO     : Sheet number
+*&---------------------------------------------------------------------*
+FORM line_to_cell_separat
+  TABLES i_intern TYPE ty_t_itab
+  USING  i_line
+         i_row LIKE sy-tabix
+         ch_cell_col TYPE KCD_EX_COL
+         i_separator TYPE c
+         i_fdpos LIKE sy-fdpos
+         sheetno.
+
+  DATA: l_string   TYPE ty_s_senderline, " String from input line
+        l_sic_int  TYPE i. " Position index in the line
+
+  l_sic_int = i_fdpos.
+  i_intern-sheetno = sheetno.
+  i_intern-row = i_row.
+  l_string = i_line.
+  i_intern-col = ch_cell_col.
+
+  * Handle CSV format with escaped separators
+  IF ( i_separator = ';' OR i_separator = ',' ) AND
+       l_string(1) = gc_esc.
+    PERFORM line_to_cell_esc_sep
+      USING l_string
+            l_sic_int
+            i_separator
+            i_intern-value.
+  ELSE.
+    IF l_sic_int > 0.
+      i_intern-value = i_line(l_sic_int).
+    ENDIF.
+  ENDIF.
+
+  IF l_sic_int > 0.
+    APPEND i_intern. " Append cell data to internal table
+  ENDIF.
+
+  l_sic_int = l_sic_int + 1.
+  i_line = i_line + l_sic_int.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form line_to_cell_esc_sep
+*&---------------------------------------------------------------------*
+*& Purpose: Processes a line of text where separators may be escaped,
+*&          and extracts individual cell values.
+*& Parameters:
+*&      --> I_STRING     : Line of text from Excel
+*&      --> I_SIC_INT    : Starting position in the line
+*&      --> I_SEPARATOR  : Field separator
+*&      --> I_INTERN_VALUE: Value to store in internal table
+*&---------------------------------------------------------------------*
+FORM line_to_cell_esc_sep
+  USING i_string
+        i_sic_int TYPE i
+        i_separator TYPE c
+        i_intern_value TYPE ty_d_itabvalue.
+
+  DATA: l_int TYPE i,
+        l_cell_end(2). " End marker for escaped values
+
+  FIELD-SYMBOLS: <l_cell>. " Field symbol for cell value
+
+  l_cell_end = gc_esc.
+  l_cell_end+1 = i_separator.
+
+  IF i_string CS gc_esc. " If the string contains escape character
+    i_string = i_string + 1.
+    IF i_string CS l_cell_end.
+      l_int = sy-fdpos.
+      ASSIGN i_string(l_int) TO <l_cell>.
+      i_intern_value = <l_cell>.
+      l_int = l_int + 2.
+      i_sic_int = l_int.
+      i_string = i_string + l_int.
+    ELSEIF i_string CS gc_esc.
+      l_int = sy-fdpos.
+      ASSIGN i_string(l_int) TO <l_cell>.
+      i_intern_value = <l_cell>.
+      l_int = l_int + 1.
+      i_sic_int = l_int.
+      i_string = i_string + l_int.
+      l_int = strlen( i_string ).
+      IF l_int > 0.
+        MESSAGE x001(kx). " Error handling for unexpected format
+      ENDIF.
+    ELSE.
+      MESSAGE x001(kx). " Error handling for unexpected CSV format
+    ENDIF.
+  ENDIF.
+ENDFORM.
